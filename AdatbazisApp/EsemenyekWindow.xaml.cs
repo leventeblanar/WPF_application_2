@@ -1,6 +1,7 @@
 using System;
 using System.Data;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Data.Sqlite;
 
 namespace YourNamespace
@@ -16,7 +17,6 @@ namespace YourNamespace
             LoadEsemenyekData();
         }
 
-        // Adatok betöltése
         private void LoadEsemenyekData()
         {
             try
@@ -28,11 +28,12 @@ namespace YourNamespace
                         SELECT 
                             Esemenyek.ID, 
                             Kutyak.Nev AS KutyaID, 
-                            Esemenyek.GazdaID, 
+                            Gazdak.Nev AS GazdaID,
                             Esemenyek.EsemenyLeirasa,
                             Esemenyek.Datum
                         FROM Esemenyek
-                        LEFT JOIN Kutyak ON Esemenyek.KutyaID = Kutyak.ID";
+                        LEFT JOIN Kutyak ON Esemenyek.KutyaID = Kutyak.ID
+                        LEFT JOIN Gazdak ON Esemenyek.GazdaID = Gazdak.ID";
 
                     using (var command = new SqliteCommand(query, connection))
                     {
@@ -51,7 +52,6 @@ namespace YourNamespace
             }
         }
 
-        // Kutyák betöltése ComboBox-ba
         private void LoadKutyakToComboBox()
         {
             try
@@ -84,7 +84,101 @@ namespace YourNamespace
             }
         }
 
-        // Gomb események
+        private void KutyaComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (KutyaComboBox.SelectedItem != null)
+            {
+                var selectedKutya = KutyaComboBox.SelectedItem.ToString();
+                var kutyaId = selectedKutya?.Split('-')[0].Trim();
+
+                using (var connection = new SqliteConnection(ConnectionString))
+                {
+                    connection.Open();
+                    string query = "SELECT Gazdak.ID, Gazdak.Nev FROM Kutyak JOIN Gazdak ON Kutyak.GazdaID = Gazdak.ID WHERE Kutyak.ID = @KutyaID";
+
+                    using (var command = new SqliteCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@KutyaID", kutyaId);
+                        using (var reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                var gazdaId = reader["ID"].ToString();
+                                var gazdaNev = reader["Nev"].ToString();
+                                GazdaComboBox.Items.Clear();
+                                GazdaComboBox.Items.Add($"{gazdaId} - {gazdaNev}");
+                                GazdaComboBox.SelectedIndex = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                using (var connection = new SqliteConnection(ConnectionString))
+                {
+                    connection.Open();
+
+                    string query;
+                    if (_selectedRow == null)
+                    {
+                        query = "INSERT INTO Esemenyek (KutyaID, GazdaID, Datum, EsemenyLeirasa) VALUES (@KutyaID, @GazdaID, @Datum, @EsemenyLeirasa)";
+                    }
+                    else
+                    {
+                        query = "UPDATE Esemenyek SET KutyaID = @KutyaID, GazdaID = @GazdaID, Datum = @Datum, EsemenyLeirasa = @EsemenyLeirasa WHERE ID = @ID";
+                    }
+
+                    using (var command = new SqliteCommand(query, connection))
+                    {
+                        var selectedKutya = KutyaComboBox.SelectedItem?.ToString();
+                        var kutyaId = selectedKutya?.Split('-')[0].Trim();
+                        command.Parameters.AddWithValue("@KutyaID", string.IsNullOrEmpty(kutyaId) ? (object)DBNull.Value : kutyaId);
+
+                        var selectedGazda = GazdaComboBox.SelectedItem?.ToString();
+                        var gazdaId = selectedGazda?.Split('-')[0].Trim();
+                        command.Parameters.AddWithValue("@GazdaID", string.IsNullOrEmpty(gazdaId) ? (object)DBNull.Value : gazdaId);
+
+                        command.Parameters.AddWithValue("@Datum", EsemenyDatePicker.SelectedDate ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@EsemenyLeirasa", string.IsNullOrEmpty(LeirasTextBox.Text) ? DBNull.Value : LeirasTextBox.Text);
+
+                        if (_selectedRow != null)
+                        {
+                            command.Parameters.AddWithValue("@ID", _selectedRow["ID"]);
+                        }
+
+                        command.ExecuteNonQuery();
+                        MessageBox.Show("Adatok sikeresen mentve!", "Siker", MessageBoxButton.OK, MessageBoxImage.Information);
+                        HideForm();
+                        LoadEsemenyekData();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Hiba mentés közben: {ex.Message}", "Hiba", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ShowForm()
+        {
+            FormPanel.Visibility = Visibility.Visible;
+            LoadKutyakToComboBox();
+        }
+
+        private void HideForm()
+        {
+            FormPanel.Visibility = Visibility.Collapsed;
+            KutyaComboBox.SelectedIndex = -1;
+            GazdaComboBox.SelectedIndex = -1;
+            EsemenyDatePicker.SelectedDate = null;
+            LeirasTextBox.Clear();
+        }
+
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
             _selectedRow = null;
@@ -98,7 +192,7 @@ namespace YourNamespace
                 _selectedRow = selectedRow;
                 ShowForm();
 
-                var kutyaNev = _selectedRow["Kutya"].ToString();
+                var kutyaNev = _selectedRow["KutyaID"].ToString();
                 foreach (var item in KutyaComboBox.Items)
                 {
                     if (item.ToString()?.Contains($"- {kutyaNev}") == true)
@@ -108,10 +202,20 @@ namespace YourNamespace
                     }
                 }
 
-                EsemenyDatePicker.SelectedDate = _selectedRow["Dátum"] != DBNull.Value
-                    ? DateTime.Parse(_selectedRow["Dátum"].ToString() ?? string.Empty)
+                var gazdaNev = _selectedRow["GazdaID"].ToString();
+                foreach (var item in GazdaComboBox.Items)
+                {
+                    if (item.ToString()?.Contains($"- {gazdaNev}") == true)
+                    {
+                        GazdaComboBox.SelectedItem = item;
+                        break;
+                    }
+                }
+
+                EsemenyDatePicker.SelectedDate = _selectedRow["Datum"] != DBNull.Value
+                    ? DateTime.Parse(_selectedRow["Datum"].ToString() ?? string.Empty)
                     : null;
-                LeirasTextBox.Text = _selectedRow["Leírás"]?.ToString();
+                LeirasTextBox.Text = _selectedRow["EsemenyLeirasa"]?.ToString();
             }
         }
 
@@ -144,65 +248,6 @@ namespace YourNamespace
                     }
                 }
             }
-        }
-
-        private void SaveButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                using (var connection = new SqliteConnection(ConnectionString))
-                {
-                    connection.Open();
-
-                    string query;
-                    if (_selectedRow == null)
-                    {
-                        query = "INSERT INTO Esemenyek (KutyaID, Dátum, Leírás) VALUES (@KutyaID, @Dátum, @Leírás)";
-                    }
-                    else
-                    {
-                        query = "UPDATE Esemenyek SET KutyaID = @KutyaID, Dátum = @Dátum, Leírás = @Leírás WHERE ID = @ID";
-                    }
-
-                    using (var command = new SqliteCommand(query, connection))
-                    {
-                        var selectedKutya = KutyaComboBox.SelectedItem?.ToString();
-                        var kutyaId = selectedKutya?.Split('-')[0].Trim();
-                        command.Parameters.AddWithValue("@KutyaID", string.IsNullOrEmpty(kutyaId) ? (object)DBNull.Value : kutyaId);
-
-                        command.Parameters.AddWithValue("@Dátum", EsemenyDatePicker.SelectedDate ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@Leírás", string.IsNullOrEmpty(LeirasTextBox.Text) ? DBNull.Value : LeirasTextBox.Text);
-
-                        if (_selectedRow != null)
-                        {
-                            command.Parameters.AddWithValue("@ID", _selectedRow["ID"]);
-                        }
-
-                        command.ExecuteNonQuery();
-                        MessageBox.Show("Adatok sikeresen mentve!", "Siker", MessageBoxButton.OK, MessageBoxImage.Information);
-                        HideForm();
-                        LoadEsemenyekData();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Hiba mentés közben: {ex.Message}", "Hiba", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private void ShowForm()
-        {
-            FormPanel.Visibility = Visibility.Visible;
-            LoadKutyakToComboBox();
-        }
-
-        private void HideForm()
-        {
-            FormPanel.Visibility = Visibility.Collapsed;
-            KutyaComboBox.SelectedIndex = -1;
-            EsemenyDatePicker.SelectedDate = null;
-            LeirasTextBox.Clear();
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)

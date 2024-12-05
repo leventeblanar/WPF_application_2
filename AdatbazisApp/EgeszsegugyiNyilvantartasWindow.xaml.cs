@@ -16,7 +16,6 @@ namespace YourNamespace
             LoadEgeszsegugyiData();
         }
 
-        // Adatok betöltése
         private void LoadEgeszsegugyiData()
         {
             try
@@ -50,7 +49,6 @@ namespace YourNamespace
             }
         }
 
-        // Kutyák betöltése ComboBox-ba
         private void LoadKutyakToComboBox()
         {
             try
@@ -83,7 +81,6 @@ namespace YourNamespace
             }
         }
 
-        // Gombok eseményei
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
             _selectedRow = null;
@@ -97,7 +94,7 @@ namespace YourNamespace
                 _selectedRow = selectedRow;
                 ShowForm();
 
-                var kutyaNev = _selectedRow["Kutya"].ToString();
+                var kutyaNev = _selectedRow["KutyaID"].ToString();
                 foreach (var item in KutyaComboBox.Items)
                 {
                     if (item.ToString()?.Contains($"- {kutyaNev}") == true)
@@ -107,10 +104,21 @@ namespace YourNamespace
                     }
                 }
 
-                VizsgalatDatePicker.SelectedDate = _selectedRow["VizsgalatDátum"] != DBNull.Value
-                    ? DateTime.Parse(_selectedRow["VizsgalatDátum"].ToString() ?? string.Empty)
-                    : null;
-                MegjegyzesTextBox.Text = _selectedRow["Megjegyzés"]?.ToString();
+                // A dátum érték kezelése
+                if (_selectedRow["VizsgalatDatuma"] != DBNull.Value)
+                {
+                    VizsgalatDatePicker.SelectedDate = DateTime.Parse(_selectedRow["VizsgalatDatuma"].ToString() ?? string.Empty);
+                }
+                else
+                {
+                    VizsgalatDatePicker.SelectedDate = null;
+                }
+
+                MegjegyzesTextBox.Text = _selectedRow["Megjegyzes"]?.ToString();
+            }
+            else
+            {
+                MessageBox.Show("Válassz ki egy sort a módosításhoz!", "Figyelmeztetés", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -156,11 +164,11 @@ namespace YourNamespace
                     string query;
                     if (_selectedRow == null)
                     {
-                        query = "INSERT INTO EgeszsegugyiNyilvantartas (KutyaID, VizsgalatDátum, Megjegyzés) VALUES (@KutyaID, @VizsgalatDátum, @Megjegyzés)";
+                        query = "INSERT INTO EgeszsegugyiNyilvantartas (KutyaID, VizsgalatDatuma, Megjegyzes) VALUES (@KutyaID, @VizsgalatDatuma, @Megjegyzes)";
                     }
                     else
                     {
-                        query = "UPDATE EgeszsegugyiNyilvantartas SET KutyaID = @KutyaID, VizsgalatDátum = @VizsgalatDátum, Megjegyzés = @Megjegyzés WHERE ID = @ID";
+                        query = "UPDATE EgeszsegugyiNyilvantartas SET KutyaID = @KutyaID, VizsgalatDatuma = @VizsgalatDatuma, Megjegyzes = @Megjegyzes WHERE ID = @ID";
                     }
 
                     using (var command = new SqliteCommand(query, connection))
@@ -169,8 +177,8 @@ namespace YourNamespace
                         var kutyaId = selectedKutya?.Split('-')[0].Trim();
                         command.Parameters.AddWithValue("@KutyaID", string.IsNullOrEmpty(kutyaId) ? (object)DBNull.Value : kutyaId);
 
-                        command.Parameters.AddWithValue("@VizsgalatDátum", VizsgalatDatePicker.SelectedDate ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@Megjegyzés", string.IsNullOrEmpty(MegjegyzesTextBox.Text) ? DBNull.Value : MegjegyzesTextBox.Text);
+                        command.Parameters.AddWithValue("@VizsgalatDatuma", VizsgalatDatePicker.SelectedDate ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@Megjegyzes", string.IsNullOrEmpty(MegjegyzesTextBox.Text) ? DBNull.Value : MegjegyzesTextBox.Text);
 
                         if (_selectedRow != null)
                         {
